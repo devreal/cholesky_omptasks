@@ -1,0 +1,3 @@
+CC = cc
+CFLAGS  += -I$(MKLROOT)/include -O3 -I./ -h std=c99  -h omp -g
+LDFLAGS += -h std=c99 -lrt -lpthread -lm -h omp

@@ -1,0 +1,3 @@
+CC = mpiicc
+CFLAGS  += -I${MKLROOT}/include -O3 -I./ -std=gnu99  -fopenmp -g -mkl=sequential -DHAVE_COMM_SENTINEL -DHAVE_INTERMEDIATE_COMM_SENTINEL
+LDFLAGS += -std=gnu99 -lrt -fopenmp -mkl=sequential -pthread -lm -ldl -static-intel

@@ -1,0 +1,5 @@
+CC = mcc --ompss
+
+CFLAGS = --cc=mpiicc --cpp=mpiicc --Wn,-mkl=sequential
+LDFLAGS = --ld=mpiicc --Wl,-mkl=sequential
+
