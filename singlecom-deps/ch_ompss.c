@@ -34,7 +34,7 @@ void cholesky_mpi(const int ts, const int nt, double *A[nt][nt], double *B, doub
 
         if (block_rank[k*nt+k] == mype && np != 1) {
           // use comm_sentinel to make sure this task runs before the communication tasks below
-#pragma omp task depend(in: A[k][k], comm_sentinel) firstprivate(k)
+#pragma omp task depend(in: A[k][k], comm_sentinel) firstprivate(k) untied
 {
           //printf("Communicating potrf in k=%d\n", k);
           START_TIMING(TIME_COMM);
@@ -65,7 +65,7 @@ void cholesky_mpi(const int ts, const int nt, double *A[nt][nt], double *B, doub
 }
         } else if (block_rank[k*nt+k] != mype) {
           // use comm_sentinel to make sure this task runs before the communication tasks below
-#pragma omp task depend(out: B) depend(in:comm_sentinel) firstprivate(k)
+#pragma omp task depend(out: B) depend(in:comm_sentinel) firstprivate(k) untied
 {
           START_TIMING(TIME_COMM);
           int recv_flag = 0;
@@ -105,7 +105,7 @@ void cholesky_mpi(const int ts, const int nt, double *A[nt][nt], double *B, doub
             }
         }
 
-#pragma omp task depend(inout: comm_sentinel) firstprivate(k) shared(A)
+#pragma omp task depend(inout: comm_sentinel) firstprivate(k) shared(A) untied
 {
         START_TIMING(TIME_COMM);
         char send_flags[np];
