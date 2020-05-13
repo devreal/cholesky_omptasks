@@ -16,7 +16,7 @@ CFLAGS=-fopenmp
 LDFLAGS=-fopenmp
 endif
 
-all : ch_ompss_perrank ch_ompss_perrank_extrae ch_ompss_perrank_timing
+all : ch_ompss_perrank ch_ompss_perrank_timing
 ch_ompss_perrank: ch_ompss.c ch_common.c
 	$(CC) $(CFLAGS) -g -gdwarf-3 -o $@ ch_ompss.c --keep-all-files ch_common.c $(LDFLAGS)
 

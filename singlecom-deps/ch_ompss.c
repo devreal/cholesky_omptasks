@@ -11,6 +11,7 @@
 
 void cholesky_mpi(const int ts, const int nt, double *A[nt][nt], double *B, double *C[nt], int *block_rank)
 {
+    volatile int comm_sentinel = 0; // <-- sentinel, never actual referenced
 #pragma omp parallel
 {
 #pragma omp single
@@ -21,22 +22,22 @@ void cholesky_mpi(const int ts, const int nt, double *A[nt][nt], double *B, doub
     START_TIMING(TIME_CREATE);
     for (int k = 0; k < nt; k++) {
         if (block_rank[k*nt+k] == mype) {
+            DEBUG_PRINT("Expected: [%03d] Lvl 1 [%03d] diag R#%d\n", k, k, mype);
 #pragma omp task depend(out: A[k][k]) firstprivate(k)
 {
-        //printf("Computing potrf in k=%d\n", k);
+        DEBUG_PRINT("[%03d] Lvl 1 [%03d] diag R#%d\n", k, k, mype);
 		START_TIMING(TIME_POTRF);
         omp_potrf(A[k][k], ts, ts);
 		END_TIMING(TIME_POTRF);
 }
         }
 
-        int comm_sentinel; // <-- sentinel, never actual referenced
-
         if (block_rank[k*nt+k] == mype && np != 1) {
           // use comm_sentinel to make sure this task runs before the communication tasks below
-#pragma omp task depend(in: A[k][k], comm_sentinel) firstprivate(k)
+          DEBUG_PRINT("Expected: [%03d] Lvl 2 potrf Comm R#%d: Send Start\n", k, mype);
+#pragma omp task depend(in: A[k][k]) depend(in: comm_sentinel) firstprivate(k)
 {
-          //printf("Communicating potrf in k=%d\n", k);
+          DEBUG_PRINT("[%03d] Lvl 2 potrf Comm R#%d: Send Start\n", k, mype);
           START_TIMING(TIME_COMM);
           MPI_Request *reqs = NULL;
           int nreqs = 0;
@@ -65,8 +66,10 @@ void cholesky_mpi(const int ts, const int nt, double *A[nt][nt], double *B, doub
 }
         } else if (block_rank[k*nt+k] != mype) {
           // use comm_sentinel to make sure this task runs before the communication tasks below
-#pragma omp task depend(out: B) depend(in:comm_sentinel) firstprivate(k)
+          DEBUG_PRINT("Expected: [%03d] Lvl 2 potrf Comm R#%d: Recv Start\n", k, mype);
+#pragma omp task depend(out: B) depend(in: comm_sentinel) firstprivate(k)
 {
+          DEBUG_PRINT("[%03d] Lvl 2 potrf Comm R#%d: Recv Start\n", k, mype);
           START_TIMING(TIME_COMM);
           int recv_flag = 0;
           for (int i = k + 1; i < nt; i++) {
@@ -88,15 +91,19 @@ void cholesky_mpi(const int ts, const int nt, double *A[nt][nt], double *B, doub
         for (int i = k + 1; i < nt; i++) {
             if (block_rank[k*nt+i] == mype) {
                 if (block_rank[k*nt+k] == mype) {
+                    DEBUG_PRINT("Expected: [%03d] Lvl 3 [%03d] trsm Calc R#%d\n", k, i, mype);
 #pragma omp task depend(in: A[k][k], comm_sentinel) depend(out: A[k][i]) firstprivate(k, i)
 {
+                    DEBUG_PRINT("[%03d] Lvl 3 [%03d] trsm Calc R#%d\n", k, i, mype);
 			        START_TIMING(TIME_TRSM);
                     omp_trsm(A[k][k], A[k][i], ts, ts);
 			        END_TIMING(TIME_TRSM);
 }
                 } else {
+                    DEBUG_PRINT("Expected: [%03d] Lvl 3 [%03d] trsm Calc R#%d\n", k, i, mype);
 #pragma omp task depend(in: B, comm_sentinel) depend(out: A[k][i]) firstprivate(k, i)
 {
+                    DEBUG_PRINT("[%03d] Lvl 3 [%03d] trsm Calc R#%d\n", k, i, mype);
 			        START_TIMING(TIME_TRSM);
                     omp_trsm(B, A[k][i], ts, ts);
 			        END_TIMING(TIME_TRSM);
@@ -105,8 +112,10 @@ void cholesky_mpi(const int ts, const int nt, double *A[nt][nt], double *B, doub
             }
         }
 
+        DEBUG_PRINT("Expected: [%03d] Lvl 4 [000] trsm Comm R#%d: Starting\n", k, mype);
 #pragma omp task depend(inout: comm_sentinel) firstprivate(k) shared(A)
 {
+        DEBUG_PRINT("[%03d] Lvl 4 [000] trsm Comm R#%d: Starting\n", k, mype);
         START_TIMING(TIME_COMM);
         char send_flags[np];
         reset_send_flags(send_flags);
@@ -157,36 +166,46 @@ void cholesky_mpi(const int ts, const int nt, double *A[nt][nt], double *B, doub
         waitall(reqs, nreqs);
         free(reqs);
         END_TIMING(TIME_COMM);
+        DEBUG_PRINT("[%03d] Lvl 4 [999] trsm Comm R#%d: Done\n", k, mype);
 }
+        DEBUG_PRINT("Expected: [%03d] Lvl 4 [999] trsm Comm R#%d: Done\n", k, mype);
 
         for (int i = k + 1; i < nt; i++) {
 
             for (int j = k + 1; j < i; j++) {
                 if (block_rank[j*nt+i] == mype) {
                     if (block_rank[k*nt+i] == mype && block_rank[k*nt+j] == mype) {
-#pragma omp task depend(in: A[k][i], A[k][j]) depend(out: A[j][i]) firstprivate(k, j, i)
+                        DEBUG_PRINT("Expected: [%03d] Lvl 5 [%03d][%03d] gemm R#%d\n", k, i, j, mype);
+#pragma omp task depend(in: A[k][i], A[k][j], comm_sentinel) depend(out: A[j][i]) firstprivate(k, j, i)
 {
+                        DEBUG_PRINT("[%03d] Lvl 5 [%03d][%03d] gemm R#%d\n", k, i, j, mype);
 						START_TIMING(TIME_GEMM);
                         omp_gemm(A[k][i], A[k][j], A[j][i], ts, ts);
 						END_TIMING(TIME_GEMM);
 }
                     } else if (block_rank[k*nt+i] != mype && block_rank[k*nt+j] == mype) {
+                        DEBUG_PRINT("Expected: [%03d] Lvl 5 [%03d][%03d] gemm R#%d\n", k, i, j, mype);
 #pragma omp task depend(in: A[k][j], comm_sentinel) depend(out: A[j][i]) firstprivate(k, j, i)
 {
+                        DEBUG_PRINT("[%03d] Lvl 5 [%03d][%03d] gemm R#%d\n", k, i, j, mype);
 						START_TIMING(TIME_GEMM);
                         omp_gemm(C[i], A[k][j], A[j][i], ts, ts);
 						END_TIMING(TIME_GEMM);
 }
                     } else if (block_rank[k*nt+i] == mype && block_rank[k*nt+j] != mype) {
+                        DEBUG_PRINT("Expected: [%03d] Lvl 5 [%03d][%03d] gemm R#%d\n", k, i, j, mype);
 #pragma omp task depend(in: A[k][i], comm_sentinel) depend(out: A[j][i]) firstprivate(k, j, i)
 {
+                        DEBUG_PRINT("[%03d] Lvl 5 [%03d][%03d] gemm R#%d\n", k, i, j, mype);
 						START_TIMING(TIME_GEMM);
                         omp_gemm(A[k][i], C[j], A[j][i], ts, ts);
 						END_TIMING(TIME_GEMM);
 }
                     } else {
+                        DEBUG_PRINT("Expected: [%03d] Lvl 5 [%03d][%03d] gemm R#%d\n", k, i, j, mype);
 #pragma omp task depend(in: comm_sentinel) depend(out: A[j][i]) firstprivate(k, j, i)
 {
+                        DEBUG_PRINT("[%03d] Lvl 5 [%03d][%03d] gemm R#%d\n", k, i, j, mype);
 						START_TIMING(TIME_GEMM);
                         omp_gemm(C[i], C[j], A[j][i], ts, ts);
 						END_TIMING(TIME_GEMM);
@@ -197,15 +216,19 @@ void cholesky_mpi(const int ts, const int nt, double *A[nt][nt], double *B, doub
 
             if (block_rank[i*nt+i] == mype) {
                 if (block_rank[k*nt+i] == mype) {
-#pragma omp task depend(in: A[k][i]) depend(out: A[i][i]) firstprivate(k, i)
+                    DEBUG_PRINT("Expected: [%03d] Lvl 6 [%03d] syrk R#%d\n", k, i, mype);
+#pragma omp task depend(in: A[k][i], comm_sentinel) depend(out: A[i][i]) firstprivate(k, i)
 {
+                        DEBUG_PRINT("[%03d] Lvl 6 [%03d] syrk R#%d\n", k, i, mype);
 						START_TIMING(TIME_SYRK);
                     omp_syrk(A[k][i], A[i][i], ts, ts);
 						END_TIMING(TIME_SYRK);
 }
                 } else {
+                    DEBUG_PRINT("Expected: [%03d] Lvl 6 [%03d] syrk R#%d\n", k, i, mype);
 #pragma omp task depend(in: comm_sentinel) depend(out: A[i][i]) firstprivate(k, i)
 {
+                        DEBUG_PRINT("[%03d] Lvl 6 [%03d] syrk R#%d\n", k, i, mype);
 						START_TIMING(TIME_SYRK);
                     omp_syrk(C[i], A[i][i], ts, ts);
 						END_TIMING(TIME_SYRK);

@@ -5,7 +5,20 @@
 #include <mpi.h>
 #include <omp.h>
 
-//#define DEBUG
+// #define DEBUG_PRINT(STR, ...)
+// #define DEBUG_PRINT_WINFO(STR, ...)
+
+#define DEBUG_PRINT(STR, ...) do { \
+    fprintf(stderr, STR, __VA_ARGS__); \
+} while(0)
+#define DEBUG_PRINT_WINFO(STR, ...) do { \
+    char* tmp_str = malloc(sizeof(char)*512); \
+    tmp_str[0] = '\0'; \
+    strcat(tmp_str,"R#%02d T#%02d (OS_TID:%06ld): --> "); \
+    strcat(tmp_str,STR); \
+    fprintf(stderr, tmp_str, mype, omp_get_thread_num(), syscall(SYS_gettid), __VA_ARGS__); \
+    free(tmp_str); \
+} while(0)
 
 #ifdef _USE_HBW
 #include <hbwmalloc.h>
