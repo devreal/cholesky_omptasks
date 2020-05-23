@@ -16,7 +16,7 @@ CFLAGS=-fopenmp
 LDFLAGS=-fopenmp
 endif
 
-all : ch_$(TARGET)_fine ch_$(TARGET)_fine_timing
+all : ch_$(TARGET)_fine ch_$(TARGET)_fine_extrae ch_$(TARGET)_fine_timing
 ch_$(TARGET)_fine: ch_ompss.c ch_common.c Makefile
 	$(CC) $(CFLAGS) -o $@ ch_ompss.c -g ch_common.c $(LDFLAGS)
 

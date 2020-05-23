@@ -172,7 +172,7 @@ int main(int argc, char *argv[])
 {
     // add to diagonal
     if (check) {
-      A[i][i][(ts/2)*ts+(ts/2)] = (double)nt;
+      Ans[i][i][(ts/2)*ts+(ts/2)] = (double)nt;
     }
     if (block_rank[i*nt+i] == mype) {
       A[i][i][(ts/2)*ts+(ts/2)] = (double)nt;
